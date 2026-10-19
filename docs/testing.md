@@ -25,6 +25,8 @@ powershell -ExecutionPolicy Bypass -File scripts/test.ps1 -Integration
 
 v0.1.2 验证结果：Release 构建 0 警告、0 错误，32 项检查全部通过，发布版主窗口和命令导入窗口的冒烟检查退出码为 0。
 
+v0.1.3 针对 UI 修改重新构建并执行回归：未勾选的焦点行保持白底、批量操作不使用未勾选行、勾选着色及取消勾选恢复白底；实际调用关闭事件验证取消保留窗口、托盘选择保存并隐藏、彻底退出触发清理。检查退出码为 0；已查看 200% 缩放下的主窗口和关闭提示截图。本次未修改 SSH 核心，沿用上述核心验证结果。
+
 - 配置校验、ID 复制隔离、引用关系、原子保存与备份。
 - 导入 ID 重建、私钥路径导出清理、未知字段拒绝。
 - Windows 凭据管理器写入、读取与删除。
@@ -45,6 +47,12 @@ $app.ExitCode
 ```
 
 使用隔离示例配置和单独的测试互斥锁，不连接服务器、不修改用户数据。成功退出码为 0；主窗口截图在程序目录的 `ui-smoke.png`。启动阶段失败时写入 `smoke-error.txt`。
+
+v0.1.3 额外生成关闭选择截图 `ui-close.png`；托盘流程保存的示例配置仅位于程序目录下的 `smoke-data`，不写入用户数据目录。
+
+## 图标维护
+
+图标源文件为 `src/SshManager.App/Assets/app.svg`，多尺寸 ICO 已提交到 Git。修改几何后可运行 `powershell -ExecutionPolicy Bypass -File scripts/generate-icon.ps1` 同步生成 ICO。该脚本使用 Windows System.Drawing，不依赖图像生成服务或额外 Python 包。
 
 ## 尚需人工或额外环境验证
 

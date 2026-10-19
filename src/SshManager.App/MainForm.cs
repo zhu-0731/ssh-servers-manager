@@ -16,17 +16,18 @@ internal sealed class MainForm : Form
         Dock = DockStyle.Fill, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
         AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None, RowHeadersVisible = false,
         AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = true,
+        SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false,
         BackgroundColor = Color.White, BorderStyle = BorderStyle.None
     };
     private readonly TextBox logs = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 10) };
     private readonly Label summary = new() { Dock = DockStyle.Bottom, Height = 30, Padding = new Padding(8, 5, 0, 0) };
     private readonly Label note = new() { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(8), AutoEllipsis = true };
-    private readonly NotifyIcon tray = new() { Text = "SSH Servers Manager", Icon = SystemIcons.Application, Visible = true };
+    private readonly Icon appIcon = AppIcon.Load();
+    private readonly NotifyIcon tray = new() { Text = "SSH Servers Manager", Visible = true };
     private readonly Queue<string> logLines = new();
     private readonly System.Windows.Forms.Timer refresh = new() { Interval = 700 };
     private readonly SemaphoreSlim operation = new(1, 1);
-    private bool exiting, allowClose, firstHide = true;
+    private bool exiting, allowClose, firstHide = true, closePromptOpen;
 
     private Profile? Current => profiles.SelectedItem as Profile;
 
@@ -36,6 +37,9 @@ internal sealed class MainForm : Form
         this.store = store; this.config = config;
         Text = "SSH Servers Manager"; Width = 1320; Height = 820; MinimumSize = new Size(1040, 650);
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Microsoft YaHei UI", 10);
+        Icon = appIcon; tray.Icon = appIcon;
+        grid.DefaultCellStyle.SelectionBackColor = Color.White;
+        grid.DefaultCellStyle.SelectionForeColor = Color.FromArgb(40, 45, 55);
         var trust = new HostTrustStore(store.DirectoryPath);
         tunnels = new TunnelManager(new SshTunnelFactory(credentials, trust, ConfirmHost));
         tunnels.Logged += e => OnUi(() => AddLog(e));
@@ -77,13 +81,13 @@ internal sealed class MainForm : Form
         var actions = Bar(DockStyle.Top, 88);
         Button(actions, "新增规则", () => EditRule(true)); Button(actions, "编辑规则", () => EditRule(false));
         Button(actions, "导入 SSH 命令…", ImportCommand);
-        Button(actions, "删除规则", DeleteRules); Button(actions, "复制到方案…", CopyRules);
-        Button(actions, "启动选中", () => StartRules(SelectedRules())); Button(actions, "停止选中", () => StopRules(SelectedRules()));
-        Button(actions, "重连选中", ReconnectRules);
+        Button(actions, "删除勾选", DeleteRules); Button(actions, "复制勾选到…", CopyRules);
+        Button(actions, "启动勾选", () => StartRules(SelectedRules())); Button(actions, "停止勾选", () => StopRules(SelectedRules()));
+        Button(actions, "重连勾选", ReconnectRules);
         Button(actions, "启动方案", () => StartRules(ProfileRules())); Button(actions, "停止方案", () => StopRules(ProfileRules()));
         main.Controls.Add(actions);
 
-        grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Check", HeaderText = "选择", FillWeight = 40 });
+        grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Check", HeaderText = "勾选", FillWeight = 40 });
         AddColumn("Name", "规则", 110); AddColumn("Server", "SSH 服务器", 110);
         AddColumn("Direction", "方向", 65); AddColumn("Listen", "监听端点", 140);
         AddColumn("Target", "目标端点", 140); AddColumn("State", "状态", 65); AddColumn("Detail", "详情", 200);
@@ -99,6 +103,19 @@ internal sealed class MainForm : Form
             split.SplitterDistance = Math.Max(split.Panel1MinSize, split.Height - (int)(150 * DeviceDpi / 96f));
         };
         DpiChanged += (_, _) => SizeColumns();
+        grid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (grid.IsCurrentCellDirty && grid.CurrentCell?.OwningColumn.Name == "Check")
+                grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+        grid.CellValueChanged += (_, e) =>
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex == 0)
+            {
+                PaintSelection(grid.Rows[e.RowIndex]);
+                if (grid.Rows[e.RowIndex].Tag is string) RefreshStates();
+            }
+        };
         grid.CellContentClick += (_, e) =>
         {
             if (e.RowIndex < 0 || grid.Columns[e.ColumnIndex].Name != "Toggle") return;
@@ -167,8 +184,16 @@ internal sealed class MainForm : Form
     {
         grid.EndEdit();
         var checkedIds = grid.Rows.Cast<DataGridViewRow>().Where(r => r.Cells[0].Value is true).Select(r => (string)r.Tag!).ToHashSet();
-        var ids = checkedIds.Count > 0 ? checkedIds : grid.SelectedRows.Cast<DataGridViewRow>().Select(r => (string)r.Tag!).ToHashSet();
-        return config.Rules.Where(r => ids.Contains(r.Id)).ToList();
+        if (checkedIds.Count == 0) throw new InvalidDataException("请先勾选需要操作的规则。");
+        return config.Rules.Where(r => checkedIds.Contains(r.Id)).ToList();
+    }
+    private ForwardRule? FocusedRule() => grid.CurrentRow?.Tag is string id ? config.Rules.FirstOrDefault(r => r.Id == id) : null;
+    private static void PaintSelection(DataGridViewRow row)
+    {
+        var background = row.Cells[0].Value is true ? Color.FromArgb(222, 238, 255) : Color.White;
+        row.DefaultCellStyle.BackColor = background;
+        row.DefaultCellStyle.SelectionBackColor = background;
+        row.DefaultCellStyle.SelectionForeColor = row.DefaultCellStyle.ForeColor.IsEmpty ? Color.FromArgb(40, 45, 55) : row.DefaultCellStyle.ForeColor;
     }
     private void ReloadRules()
     {
@@ -180,6 +205,7 @@ internal sealed class MainForm : Form
                 Endpoint(r.ListenHost, r.ListenPort), Endpoint(r.TargetHost, r.TargetPort), "", "", "启动");
             grid.Rows[i].Tag = r.Id;
         }
+        grid.ClearSelection(); grid.CurrentCell = null;
         note.Text = Current?.Description ?? ""; RefreshStates();
     }
     private void RefreshStates()
@@ -191,10 +217,12 @@ internal sealed class MainForm : Form
             row.Cells["State"].Value = StateText(state.State); row.Cells["Detail"].Value = state.Detail;
             row.Cells["Toggle"].Value = tunnels.IsActive(state.RuleId) ? "停止" : "启动";
             row.DefaultCellStyle.ForeColor = state.State == TunnelState.Error ? Color.Firebrick : state.State == TunnelState.Running ? Color.DarkGreen : Color.FromArgb(40, 45, 55);
+            PaintSelection(row);
         }
         var running = config.Rules.Count(r => tunnels.Get(r.Id).State == TunnelState.Running);
         var failed = config.Rules.Count(r => tunnels.Get(r.Id).State == TunnelState.Error);
-        summary.Text = $"全部方案：运行 {running} 条 · 异常 {failed} 条 · 共 {config.Rules.Count} 条规则";
+        var checkedCount = grid.Rows.Cast<DataGridViewRow>().Count(r => r.Cells[0].Value is true);
+        summary.Text = $"本方案已勾选 {checkedCount} 条　|　全部方案：运行 {running} 条 · 异常 {failed} 条 · 共 {config.Rules.Count} 条规则";
     }
     private static string StateText(TunnelState s) => s switch
     {
@@ -236,7 +264,7 @@ internal sealed class MainForm : Form
     {
         if (Current is not { } p) throw new InvalidDataException("请先创建方案。");
         if (config.Servers.Count == 0) throw new InvalidDataException("请先在“配置 → SSH 服务器”添加服务器。");
-        var rule = create ? new ForwardRule { ProfileId = p.Id } : SelectedRules().FirstOrDefault();
+        var rule = create ? new ForwardRule { ProfileId = p.Id } : FocusedRule();
         if (rule == null) throw new InvalidDataException("请选择一条规则。");
         if (!create && tunnels.IsActive(rule.Id)) throw new InvalidDataException("请先停止规则再编辑；重启后新配置生效。");
         using var dialog = new RuleEditor(rule, config.Servers);
@@ -312,7 +340,7 @@ internal sealed class MainForm : Form
     }
     private void CopyEndpoint(Func<ForwardRule, string> select) => Run(() =>
     {
-        var rules = SelectedRules(); if (rules.Count > 0) Clipboard.SetText(string.Join(Environment.NewLine, rules.Select(select)));
+        var rule = FocusedRule(); if (rule != null) Clipboard.SetText(select(rule));
         return Task.CompletedTask;
     });
     private bool Ask(string message) => MessageBox.Show(this, message, "请确认", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
@@ -351,13 +379,34 @@ internal sealed class MainForm : Form
         try { BeginInvoke(action); } catch (InvalidOperationException) { }
     }
     private void RestoreWindow() { Show(); WindowState = FormWindowState.Normal; Activate(); }
-    private void ClosingWindow(object? sender, FormClosingEventArgs e)
+    private async void ClosingWindow(object? sender, FormClosingEventArgs e)
     {
         if (allowClose) return;
         e.Cancel = true;
-        if (e.CloseReason is CloseReason.WindowsShutDown or CloseReason.TaskManagerClosing) { Run(ExitAsync); return; }
-        Hide();
-        if (firstHide) { firstHide = false; tray.ShowBalloonTip(4000, "已最小化到托盘", "通道继续运行。选择托盘“退出并停止全部”可释放所有连接。", ToolTipIcon.Info); }
+        if (exiting || closePromptOpen) return;
+        closePromptOpen = true;
+        try
+        {
+            var choice = CloseChoice.Exit;
+            if (e.CloseReason is not (CloseReason.WindowsShutDown or CloseReason.TaskManagerClosing))
+            {
+                using var dialog = new CloseChoiceDialog(config.Rules.Count(r => tunnels.IsActive(r.Id)), appIcon);
+                dialog.ShowDialog(this); choice = dialog.Choice;
+            }
+            if (choice == CloseChoice.Tray)
+            {
+                Save(); Hide();
+                if (firstHide) { firstHide = false; tray.ShowBalloonTip(4000, "已最小化到托盘", "配置已保存，通道继续运行。双击 SSH 图标恢复窗口。", ToolTipIcon.Info); }
+            }
+            else if (choice == CloseChoice.Exit)
+            {
+                await operation.WaitAsync();
+                try { if (!exiting) await ExitAsync(); }
+                finally { operation.Release(); }
+            }
+        }
+        catch (Exception ex) { if (!IsDisposed) MessageBox.Show(this, ex.Message, "关闭失败", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        finally { closePromptOpen = false; }
     }
     private async Task ExitAsync()
     {
@@ -372,6 +421,13 @@ internal sealed class MainForm : Form
     }
     internal void CloseForSmokeTest()
     {
+        // Regression: row focus must never look checked, and batch actions require actual check marks.
+        grid.CurrentCell = grid.Rows[0].Cells[1];
+        if (grid.Rows[0].DefaultCellStyle.SelectionBackColor != Color.White) throw new InvalidOperationException("Unchecked focused row is highlighted.");
+        try { SelectedRules(); throw new InvalidOperationException("Unchecked row was used for a batch action."); }
+        catch (InvalidDataException) { }
+        grid.Rows[0].Cells[0].Value = true;
+        if (SelectedRules().Count != 1 || grid.Rows[0].DefaultCellStyle.BackColor == Color.White) throw new InvalidOperationException("Checked row state is not visible.");
         using var image = new Bitmap(Width, Height);
         DrawToBitmap(image, new Rectangle(0, 0, Width, Height));
         image.Save(Path.Combine(AppContext.BaseDirectory, "ui-smoke.png"));
@@ -380,15 +436,44 @@ internal sealed class MainForm : Form
         using var picker = new ProfilePicker(config.Profiles);
         using var servers = new ServerManager(config, credentials, () => { }, _ => false);
         using var command = new CommandImportDialog(config.Profiles, Current?.Id);
-        foreach (var dialog in new Form[] { rule, server, picker, servers, command })
+        using var close = new CloseChoiceDialog(2, appIcon);
+        foreach (var dialog in new Form[] { rule, server, picker, servers, command, close })
         {
-            dialog.Show(); dialog.Close();
+            dialog.Show();
+            if (dialog == close)
+            {
+                using var closeImage = new Bitmap(dialog.Width, dialog.Height);
+                dialog.DrawToBitmap(closeImage, new Rectangle(Point.Empty, dialog.Size));
+                closeImage.Save(Path.Combine(AppContext.BaseDirectory, "ui-close.png"));
+            }
+            dialog.Close();
         }
-        allowClose = true; Close();
+        grid.Rows[0].Cells[0].Value = false;
+        if (grid.Rows[0].DefaultCellStyle.BackColor != Color.White) throw new InvalidOperationException("Unchecked row remains highlighted.");
+        void ChooseClose(string buttonText)
+        {
+            using var choose = new System.Windows.Forms.Timer { Interval = 50 };
+            choose.Tick += (_, _) =>
+            {
+                var prompt = Application.OpenForms.OfType<CloseChoiceDialog>().FirstOrDefault();
+                if (prompt == null) return;
+                choose.Stop();
+                prompt.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().Single(b => b.Text == buttonText).PerformClick();
+            };
+            choose.Start(); Close();
+        }
+        ChooseClose("取消");
+        if (!Visible || IsDisposed) throw new InvalidOperationException("Cancel must keep the window open.");
+        ChooseClose("最小化到托盘");
+        if (Visible || IsDisposed || !File.Exists(store.FilePath)) throw new InvalidOperationException("Tray choice must save configuration and keep the application alive.");
+        RestoreWindow();
+        ChooseClose("彻底退出");
+        if (!exiting || !allowClose) throw new InvalidOperationException("Exit choice did not trigger cleanup.");
     }
     protected override void Dispose(bool disposing)
     {
         if (disposing) { refresh.Dispose(); tray.Dispose(); }
         base.Dispose(disposing);
+        if (disposing) appIcon.Dispose();
     }
 }

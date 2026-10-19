@@ -8,7 +8,7 @@
 
 ## 启动与构建
 
-当前工作区可双击 `start.cmd`，或直接启动 `artifacts/windows-x64-v0.1.2/SshServersManager.exe`。发布程序需要 .NET 8 Desktop Runtime（x64）。更新后请先从托盘退出旧实例再启动新版。
+当前工作区可双击 `start.cmd`，或直接启动 `artifacts/windows-x64-v0.1.3/SshServersManager.exe`。发布程序需要 .NET 8 Desktop Runtime（x64）。更新后请先从托盘退出旧实例再启动新版。
 
 源码开发需要 .NET 8 SDK：
 

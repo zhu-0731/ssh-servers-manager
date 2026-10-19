@@ -7,6 +7,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Contains("--smoke-test")) Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         ApplicationConfiguration.Initialize();
         var instanceName = args.Contains("--smoke-test") ? "Local\\SshServersManager.Smoke" : "Local\\SshServersManager.Desktop";
         using var singleton = new Mutex(true, instanceName, out var first);
