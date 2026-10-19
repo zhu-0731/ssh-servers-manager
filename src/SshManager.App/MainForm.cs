@@ -49,6 +49,7 @@ internal sealed class MainForm : Form
             dialog.ShowDialog(this); ReloadRules(); return Task.CompletedTask;
         }));
         file.DropDownItems.Add("导入配置（合并）…", null, (_, _) => Run(Import));
+        file.DropDownItems.Add("从 SSH 命令导入…", null, (_, _) => Run(ImportCommand));
         file.DropDownItems.Add("导出全部配置…", null, (_, _) => Run(Export));
         file.DropDownItems.Add("打开数据目录", null, (_, _) => Run(() =>
         {
@@ -75,6 +76,7 @@ internal sealed class MainForm : Form
         main.Controls.Add(split); main.Controls.Add(summary);
         var actions = Bar(DockStyle.Top, 88);
         Button(actions, "新增规则", () => EditRule(true)); Button(actions, "编辑规则", () => EditRule(false));
+        Button(actions, "导入 SSH 命令…", ImportCommand);
         Button(actions, "删除规则", DeleteRules); Button(actions, "复制到方案…", CopyRules);
         Button(actions, "启动选中", () => StartRules(SelectedRules())); Button(actions, "停止选中", () => StopRules(SelectedRules()));
         Button(actions, "重连选中", ReconnectRules);
@@ -279,6 +281,25 @@ internal sealed class MainForm : Form
         if (!Ask($"导入 {incoming.Servers.Count} 台服务器、{incoming.Profiles.Count} 个方案和 {incoming.Rules.Count} 条规则？\n导入内容使用新 ID，不覆盖现有配置。密码与私钥需重新配置。")) return Task.CompletedTask;
         ConfigStore.ImportInto(config, incoming); Save(); ReloadProfiles(); return Task.CompletedTask;
     }
+    private Task ImportCommand()
+    {
+        using var dialog = new CommandImportDialog(config.Profiles, Current?.Id);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return Task.CompletedTask;
+        var result = dialog.Result;
+        var profile = dialog.ExistingProfile ?? new Profile { Name = dialog.NewProfileName };
+        var candidate = new Configuration
+        {
+            Servers = [.. config.Servers, result.Server],
+            Profiles = dialog.ExistingProfile == null ? [.. config.Profiles, profile] : [.. config.Profiles],
+            Rules = [.. config.Rules, .. result.Rules.Select(r => r with { ProfileId = profile.Id })]
+        };
+        // Persist a complete validated candidate before changing the in-memory configuration.
+        store.Save(candidate);
+        config.Servers = candidate.Servers; config.Profiles = candidate.Profiles; config.Rules = candidate.Rules;
+        ReloadProfiles(profile.Id);
+        MessageBox.Show(this, $"已新增服务器及 {result.Rules.Count} 条规则，全部保持停止。\n如果需要密码或私钥口令，请在“配置 → SSH 服务器”填写。", "导入完成");
+        return Task.CompletedTask;
+    }
     private Task Export()
     {
         using var file = new SaveFileDialog { Filter = "JSON 配置|*.json", FileName = "ssh-manager-config.json" };
@@ -358,7 +379,8 @@ internal sealed class MainForm : Form
         using var server = new ServerEditor(config.Servers[0], credentials);
         using var picker = new ProfilePicker(config.Profiles);
         using var servers = new ServerManager(config, credentials, () => { }, _ => false);
-        foreach (var dialog in new Form[] { rule, server, picker, servers })
+        using var command = new CommandImportDialog(config.Profiles, Current?.Id);
+        foreach (var dialog in new Form[] { rule, server, picker, servers, command })
         {
             dialog.Show(); dialog.Close();
         }

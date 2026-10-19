@@ -55,6 +55,57 @@ await Test("automatic key lookup is optional, ordered, and excludes public and u
     Assert(paths.All(p => !p.EndsWith(".pub") && Path.GetFileName(p) != "config" && Path.GetFileName(p) != "known_hosts"));
     Assert(PrivateKeyDiscovery.Find(Path.Combine(root, "no-home")).Count == 0);
 }));
+await Test("SSH command parses plain destinations, implicit username, URI and explicit user override", () => Sync(() =>
+{
+    var result = SshCommandParser.Parse("ssh dev@192.0.2.10");
+    Assert(result.Server.Username == "dev" && result.Server.Host == "192.0.2.10" && result.Server.Port == 22 && result.Rules.Count == 0);
+    Assert(result.Server.Auth == AuthKind.PrivateKey && result.Server.PrivateKeyPath == "");
+    Assert(SshCommandParser.Parse("ssh host.example", "windows-user").Server.Username == "windows-user");
+    result = SshCommandParser.Parse("ssh -l other ssh://dev@[2001:db8::1]:2222");
+    Assert(result.Server.Username == "other" && result.Server.Host == "2001:db8::1" && result.Server.Port == 2222 && result.Warnings.Count > 0);
+}));
+await Test("SSH command handles grouped options, attached arguments, quoted Windows paths and bidirectional rules", () => Sync(() =>
+{
+    var result = SshCommandParser.Parse("ssh.exe -NT -p2222 -i \"C:\\Users\\Test User\\.ssh\\id_ed25519\" -L13306:db.internal:3306 -R127.0.0.1:18080:localhost:8080 dev@192.0.2.10");
+    Assert(result.Server.Port == 2222 && result.Server.PrivateKeyPath == "C:\\Users\\Test User\\.ssh\\id_ed25519");
+    Assert(result.Rules.Count == 2 && result.Rules[0].ListenPort == 13306 && result.Rules[1].Direction == ForwardDirection.Remote);
+    Assert(result.Rules.All(r => r.ServerId == result.Server.Id));
+}));
+await Test("SSH command supports selected -o key/value forms and options after destination", () => Sync(() =>
+{
+    var result = SshCommandParser.Parse("ssh alias -o HostName=192.0.2.12 -o 'User dev' -o Port=2022 -o ConnectTimeout=20 -o 'LocalForward 13306 db:3306' -o RemoteForward=18080:localhost:8080 -o PreferredAuthentications=password");
+    Assert(result.Server.Host == "192.0.2.12" && result.Server.Username == "dev" && result.Server.Port == 2022);
+    Assert(result.Server.TimeoutSeconds == 20 && result.Server.Auth == AuthKind.Password && result.Rules.Count == 2);
+}));
+await Test("SSH command parses IPv6 forwards and previews wildcard exposure", () => Sync(() =>
+{
+    var result = SshCommandParser.Parse("ssh -g -L8080:target:80 -R9090:target:90 -L'[::1]:10001:[2001:db8::2]:443' dev@[2001:db8::1]");
+    Assert(result.Server.Host == "2001:db8::1");
+    Assert(result.Rules[0].ListenHost == "0.0.0.0" && result.Rules[1].ListenHost == "127.0.0.1");
+    Assert(result.Rules[2].ListenHost == "::1" && result.Rules[2].TargetHost == "2001:db8::2");
+    Assert(result.Warnings.Any(w => w.Contains("对外监听")));
+}));
+await Test("SSH command supports continuation and home key paths without shell evaluation", () => Sync(() =>
+{
+    var result = SshCommandParser.Parse("ssh -N `\r\n -L 8080:target:80 \\\n -i '$HOME/.ssh/id_ed25519' dev@host");
+    Assert(result.Rules.Count == 1 && result.Server.PrivateKeyPath == "~/.ssh/id_ed25519");
+    result = SshCommandParser.Parse("ssh -i 'C:\\keys\\a&b.pem' dev@host"); Assert(result.Server.PrivateKeyPath.Contains('&'));
+}));
+await Test("SSH command rejects invalid ports, incomplete forwards and malformed IPv6", () => Sync(() =>
+{
+    foreach (var input in new[] { "ssh", "ssh -p", "ssh -p0 dev@host", "ssh ssh://dev@host:0", "ssh -L 8080:target dev@host", "ssh -L0:target:80 dev@host", "ssh -R8080 dev@host", "ssh -L'[::1]extra:8080:target:80' dev@host", "ssh dev@[[::1]" })
+        Throws(() => SshCommandParser.Parse(input));
+}));
+await Test("SSH command rejects unsupported semantics and conflicting scalar arguments", () => Sync(() =>
+{
+    foreach (var input in new[] { "ssh -J hop dev@host", "ssh -D 1080 dev@host", "ssh -F config dev@host", "ssh -o StrictHostKeyChecking=no dev@host", "ssh -p22 -p2222 dev@host", "ssh -i one -i two dev@host", "ssh -i key -o PreferredAuthentications=password dev@host" })
+        Throws(() => SshCommandParser.Parse(input));
+}));
+await Test("SSH command rejects scripts, remote commands, shell substitution and unmatched quotes", () => Sync(() =>
+{
+    foreach (var input in new[] { "powershell ssh dev@host", "ssh dev@host; whoami", "ssh dev@host && whoami", "ssh dev@host | out-file x", "ssh dev@host > x", "ssh dev@host\nssh second", "ssh dev@host whoami", "ssh $(whoami)@host", "ssh -i 'unclosed dev@host", "ssh ssh://dev:password@host" })
+        Throws(() => SshCommandParser.Parse(input));
+}));
 await Test("atomic persistence, backup and sanitized export/import", () => Sync(() =>
 {
     var c = Config(); var store = new ConfigStore(Path.Combine(root, "storage"));
@@ -185,6 +236,17 @@ if (args.Length >= 3 && args[0] == "--integration")
             using var released = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             released.Bind(new IPEndPoint(IPAddress.Loopback, local.ListenPort));
             await manager.StopAsync(remote.Id);
+        });
+        await Test("real SSH command import produces working local and remote tunnels", async () =>
+        {
+            var command = $"ssh -NT -p{sshPort} -o PreferredAuthentications=password -L{FreePort()}:127.0.0.1:{echoPort} -R{FreePort()}:127.0.0.1:{echoPort} fixture@127.0.0.1";
+            var parsed = SshCommandParser.Parse(command);
+            credentials.Write(parsed.Server.Id, "fixture-password");
+            var rules = parsed.Rules.Select(r => r with { ProfileId = profile.Id }).ToList();
+            var imported = new Configuration { Servers = [parsed.Server], Profiles = [profile], Rules = rules };
+            imported.Validate();
+            foreach (var rule in rules) { manager.Start(parsed.Server, rule); await Running(rule); await Echo(rule.ListenPort); }
+            foreach (var rule in rules) await manager.StopAsync(rule.Id);
         });
         await Test("real SSH encrypted private key authentication", async () =>
         {

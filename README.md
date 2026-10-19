@@ -8,7 +8,7 @@
 
 ## 启动与构建
 
-当前工作区可双击 `start.cmd`，或直接启动 `artifacts/windows-x64-v0.1.1/SshServersManager.exe`。发布程序需要 .NET 8 Desktop Runtime（x64）。更新后请先从托盘退出旧实例再启动新版。
+当前工作区可双击 `start.cmd`，或直接启动 `artifacts/windows-x64-v0.1.2/SshServersManager.exe`。发布程序需要 .NET 8 Desktop Runtime（x64）。更新后请先从托盘退出旧实例再启动新版。
 
 源码开发需要 .NET 8 SDK：
 
@@ -26,6 +26,7 @@ powershell -ExecutionPolicy Bypass -File scripts/test.ps1
 - 支持本地转发（`-L`）和远程转发（`-R`）。
 - 端口规则独立启停、重连，展示状态与日志。
 - 同一方案包含多台服务器，支持单条与批量操作。
+- 粘贴 SSH 命令，预览并导入服务器与本地/远程转发规则。
 - 保存、复制方案，将选中规则复制到已有方案或新方案。
 - 提供配置导入导出、Windows 托盘、安全凭据存储和可选自动重连。
 
