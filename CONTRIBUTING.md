@@ -22,5 +22,5 @@
 - 文档修改检查一致性、链接及 Git 差异。
 - 实现按风险验证，重点覆盖双向转发、独立启停、取消、冲突、掉线、指纹和凭据安全。
 - SSH 集成测试使用专用环境，记录服务端策略，不默认连接开发者真实服务器。
-- 选型后补充构建和测试命令。
+- 构建：`dotnet build SshServersManager.sln -c Release`；基础测试：`powershell -ExecutionPolicy Bypass -File scripts/test.ps1`；集成测试见 `docs/testing.md`。
 - 首个功能版本计划为 `v0.1.0`，之后采用语义化版本。发布前更新 CHANGELOG，记录验证和限制；初始化不创建功能版本标签。

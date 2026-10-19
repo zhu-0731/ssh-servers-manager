@@ -37,6 +37,8 @@ bin/
 obj/
 target/
 coverage/
+artifacts/
+TestResults/
 .venv/
 __pycache__/
 *.py[cod]

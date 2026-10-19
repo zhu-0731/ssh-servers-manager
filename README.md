@@ -4,7 +4,21 @@
 
 ## 项目状态
 
-已完成项目初始化与需求整理，尚未实现应用功能。开发语言、桌面框架、SSH 实现和存储方式待选型，因此暂未提供运行或构建命令。
+已实现首个可运行开发版本，采用 .NET 8 / WinForms / SSH.NET。支持服务器和方案管理、双向转发、规则独立启停、复制、导入导出、Windows 安全凭据存储与托盘。尚需不同 Windows、实际 OpenSSH 策略和休眠唤醒环境验证，暂不标记为正式发布。
+
+## 启动与构建
+
+当前工作区可双击 `start.cmd`，或直接启动 `artifacts/windows-x64/SshServersManager.exe`。发布程序需要 .NET 8 Desktop Runtime（x64）。
+
+源码开发需要 .NET 8 SDK：
+
+```powershell
+dotnet run --project src/SshManager.App
+powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -Publish
+powershell -ExecutionPolicy Bypass -File scripts/test.ps1
+```
+
+应用不需要管理员权限。构建、测试与发布命令的输出分别位于 `bin/`、`runtime/` 和 `artifacts/`，均不进入 Git。
 
 ## 第一版目标
 
@@ -22,6 +36,9 @@
 - [开发计划](docs/roadmap.md)：分阶段交付及完成条件。
 - [开发与 Git 约定](CONTRIBUTING.md)。
 - [变更记录](CHANGELOG.md)。
+- [使用说明](docs/user-guide.md)：配置连接、复制方案、托盘与故障排查。
+- [验证说明](docs/testing.md)：测试命令、覆盖范围与待验证环境。
+- [技术选型](docs/decisions/0001-windows-stack.md)。
 
 ## 仓库结构
 
@@ -31,10 +48,16 @@ ssh-servers-manager/
 ├── AGENTS.md
 ├── CONTRIBUTING.md
 ├── CHANGELOG.md
+├── SshServersManager.sln
+├── src/
+│   ├── SshManager.Core/
+│   └── SshManager.App/
+├── tests/
+├── scripts/
 └── docs/
     ├── requirements.md
     ├── architecture.md
     └── roadmap.md
 ```
 
-源码与测试目录在技术栈确定后创建。真实服务器配置、凭据、私钥和运行日志不进入仓库。当前仅建立本地仓库，未配置远程仓库或开源许可证。
+配置保存在 `%LOCALAPPDATA%\SshServersManager`，凭据存于当前 Windows 用户的凭据管理器。真实服务器配置、凭据、私钥和运行日志不进入仓库。未配置远程仓库或开源许可证。
