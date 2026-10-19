@@ -38,4 +38,4 @@ powershell -ExecutionPolicy Bypass -File scripts/test-installer.ps1
 
 `languages/ChineseSimplified.isl` 来自 [Inno Setup 官方翻译](https://jrsoftware.org/files/istrans/)，保留原作者注释，固定源码提交为 `6ef32198ef1f7b7b375cd4b6b90896c2a58eb4c2`，文件声明适用于 Inno Setup 6.5.0+，已用 6.7.3 成功编译。
 
-SHA-256：`e0b0b350e2245f3c5e65586dfe43d574f6e7f06f2261149aba284954b3fc9a8d`。相关许可见 `languages/INNO-LICENSE.txt`；项目自身尚未指定开源许可证。
+官方原始文件（CRLF 换行）SHA-256：`e0b0b350e2245f3c5e65586dfe43d574f6e7f06f2261149aba284954b3fc9a8d`。Git 属性保留工作区的 CRLF 换行。相关许可见 `languages/INNO-LICENSE.txt`；项目自身尚未指定开源许可证。
