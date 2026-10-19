@@ -54,6 +54,14 @@ v0.1.3 额外生成关闭选择截图 `ui-close.png`；托盘流程保存的示�
 
 图标源文件为 `src/SshManager.App/Assets/app.svg`，多尺寸 ICO 已提交到 Git。修改几何后可运行 `powershell -ExecutionPolicy Bypass -File scripts/generate-icon.ps1` 同步生成 ICO。该脚本使用 Windows System.Drawing，不依赖图像生成服务或额外 Python 包。
 
+## Setup 安装包
+
+使用 Inno Setup 6.7.3 编译，载荷来自已发布 v0.1.3 自包含 ZIP，校验后封装。命令与来源见 [安装器说明](../installer/README.md)。
+
+本机隔离目录完成以下检查：简体中文静默安装、当前用户卸载注册、开始菜单及桌面快捷方式目标、安装后应用 UI 回归、同版本覆盖安装、卸载删除已登记文件及快捷方式、保留未登记用户文件。测试结束已移除自己的安装记录，没有停止现有其他实例。
+
+应用层沿用已完成的 32 项检查；安装器没有修改应用二进制。仍需干净虚拟机、不同 Windows 版本以及跨版本升级验证。
+
 ## 尚需人工或额外环境验证
 
 - 已检查当前设备 200% 缩放的窗口截图，其他 Windows 版本、缩放比例、屏幕尺寸下的交互和系统托盘仍需验证。

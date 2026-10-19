@@ -8,6 +8,8 @@
 
 GitHub：[zhu-0731/ssh-servers-manager](https://github.com/zhu-0731/ssh-servers-manager)。下载入口：[Releases](https://github.com/zhu-0731/ssh-servers-manager/releases)。
 
+推荐下载 [Windows x64 Setup 安装包](https://github.com/zhu-0731/ssh-servers-manager/releases/download/v0.1.3/SSH-Servers-Manager-v0.1.3-win-x64-Setup.exe)，提供中文向导、安装目录选择、快捷方式和卸载入口。也可继续使用 ZIP 便携版。两者均内置 .NET 运行时。
+
 ## 启动与构建
 
 当前工作区可双击 `start.cmd`，或直接启动 `artifacts/windows-x64-v0.1.3/SshServersManager.exe`。发布程序需要 .NET 8 Desktop Runtime（x64）。更新后请先从托盘退出旧实例再启动新版。
@@ -21,6 +23,7 @@ dotnet run --project src/SshManager.App
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -Publish
 powershell -ExecutionPolicy Bypass -File scripts/test.ps1
 powershell -ExecutionPolicy Bypass -File scripts/package.ps1
+powershell -ExecutionPolicy Bypass -File scripts/installer.ps1
 ```
 
 应用不需要管理员权限。构建、测试与发布命令的输出分别位于 `bin/`、`runtime/` 和 `artifacts/`，均不进入 Git。
@@ -45,6 +48,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 - [使用说明](docs/user-guide.md)：配置连接、复制方案、托盘与故障排查。
 - [验证说明](docs/testing.md)：测试命令、覆盖范围与待验证环境。
 - [技术选型](docs/decisions/0001-windows-stack.md)。
+- [Setup 构建与安装测试](installer/README.md)。
 
 ## 仓库结构
 
