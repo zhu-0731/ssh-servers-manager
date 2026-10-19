@@ -7,7 +7,7 @@
 - 提交采用 `feat:`、`fix:`、`docs:`、`test:`、`chore:` 等前缀，每次聚焦一项变更。
 - 提交前检查暂存差异，不提交真实连接配置、凭据、私钥、日志和构建产物。
 - 不重置、覆盖或清理他人的未提交修改。
-- 远程仓库未配置，发布时另行确定，不默认公开项目。
+- 用户已授权公开上传至 `zhu-0731/ssh-servers-manager`；未来推送和发布仍按具体任务授权执行。
 
 ## 文档与配置
 
@@ -23,4 +23,6 @@
 - 实现按风险验证，重点覆盖双向转发、独立启停、取消、冲突、掉线、指纹和凭据安全。
 - SSH 集成测试使用专用环境，记录服务端策略，不默认连接开发者真实服务器。
 - 构建：`dotnet build SshServersManager.sln -c Release`；基础测试：`powershell -ExecutionPolicy Bypass -File scripts/test.ps1`；集成测试见 `docs/testing.md`。
-- 首个功能版本计划为 `v0.1.0`，之后采用语义化版本。发布前更新 CHANGELOG，记录验证和限制；初始化不创建功能版本标签。
+- 首个公开预览发行版为 `v0.1.3`。发布前更新 CHANGELOG，记录验证和限制。
+- 打包使用 `powershell -ExecutionPolicy Bypass -File scripts/package.ps1`，要求 Git 工作区干净；从当前提交快照构建自包含包，避免修改源码锁文件。默认运行时为已验证可用的 .NET 8.0.32。
+- 输出位于 `artifacts/releases/v<版本>`，包含 ZIP 和 SHA-256。便携包按允许列表复制文件，不打包整个输出目录。

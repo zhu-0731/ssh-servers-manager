@@ -2,7 +2,9 @@
 
 ## 启动
 
-双击项目根目录的 `start.cmd`。如果已构建发布程序，会直接打开；否则通过 .NET SDK 从源码运行。
+GitHub 便携发行包：解压 ZIP 后运行 `SshServersManager.exe`，包内已包含运行时，无需另行安装 .NET。
+
+源码工作区：双击项目根目录的 `start.cmd`。如果已构建本地程序，会直接打开；否则通过 .NET SDK 从源码运行。
 
 也可以直接打开 `artifacts/windows-x64-v0.1.3/SshServersManager.exe`。当前发布包需要 .NET 8 Desktop Runtime（x64）。运行软件不要求管理员权限。更新后先从托盘退出旧实例，再启动新版，原有配置保持共用。
 

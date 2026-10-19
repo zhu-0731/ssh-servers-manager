@@ -4,11 +4,15 @@
 
 ## 项目状态
 
-已实现首个可运行开发版本，采用 .NET 8 / WinForms / SSH.NET。支持服务器和方案管理、双向转发、规则独立启停、复制、导入导出、Windows 安全凭据存储与托盘。尚需不同 Windows、实际 OpenSSH 策略和休眠唤醒环境验证，暂不标记为正式发布。
+已实现首个可运行预览版本，采用 .NET 8 / WinForms / SSH.NET。支持服务器和方案管理、双向转发、规则独立启停、复制、导入导出、Windows 安全凭据存储与托盘。尚需不同 Windows、实际 OpenSSH 策略和休眠唤醒环境验证。
+
+GitHub：[zhu-0731/ssh-servers-manager](https://github.com/zhu-0731/ssh-servers-manager)。下载入口：[Releases](https://github.com/zhu-0731/ssh-servers-manager/releases)。
 
 ## 启动与构建
 
 当前工作区可双击 `start.cmd`，或直接启动 `artifacts/windows-x64-v0.1.3/SshServersManager.exe`。发布程序需要 .NET 8 Desktop Runtime（x64）。更新后请先从托盘退出旧实例再启动新版。
+
+GitHub Release 的 Windows x64 ZIP 则是自包含便携包，内置 .NET 运行时；解压后直接运行 `SshServersManager.exe`。发行范围与限制见 [v0.1.3 说明](docs/releases/v0.1.3.md)。
 
 源码开发需要 .NET 8 SDK：
 
@@ -16,6 +20,7 @@
 dotnet run --project src/SshManager.App
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -Publish
 powershell -ExecutionPolicy Bypass -File scripts/test.ps1
+powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 ```
 
 应用不需要管理员权限。构建、测试与发布命令的输出分别位于 `bin/`、`runtime/` 和 `artifacts/`，均不进入 Git。
@@ -61,4 +66,4 @@ ssh-servers-manager/
     └── roadmap.md
 ```
 
-配置保存在 `%LOCALAPPDATA%\SshServersManager`，凭据存于当前 Windows 用户的凭据管理器。真实服务器配置、凭据、私钥和运行日志不进入仓库。未配置远程仓库或开源许可证。
+配置保存在 `%LOCALAPPDATA%\SshServersManager`，凭据存于当前 Windows 用户的凭据管理器。真实服务器配置、凭据、私钥和运行日志不进入仓库。项目尚未指定开源许可证；公开仓库不代表已授予开源许可，第三方组件遵循各自许可证。
