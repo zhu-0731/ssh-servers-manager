@@ -1,0 +1,42 @@
+# Credentials and local connection data
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.ppk
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+secrets/
+local-config/
+runtime/
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.bak
+~$*
+
+# Editors and Windows
+.idea/
+.vs/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+
+# Build and dependencies; refine after stack selection
+node_modules/
+dist/
+build/
+out/
+bin/
+obj/
+target/
+coverage/
+.venv/
+__pycache__/
+*.py[cod]
