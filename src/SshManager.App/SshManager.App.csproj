@@ -6,7 +6,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>SshServersManager</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../SshManager.Core/SshManager.Core.csproj" /></ItemGroup>

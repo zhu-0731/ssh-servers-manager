@@ -8,7 +8,8 @@ internal static class Program
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
-        using var singleton = new Mutex(true, "Local\\SshServersManager.Desktop", out var first);
+        var instanceName = args.Contains("--smoke-test") ? "Local\\SshServersManager.Smoke" : "Local\\SshServersManager.Desktop";
+        using var singleton = new Mutex(true, instanceName, out var first);
         if (!first) { MessageBox.Show("软件已经运行，请查看任务栏或系统托盘。", "SSH Servers Manager"); return; }
         var dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SshServersManager");
         try

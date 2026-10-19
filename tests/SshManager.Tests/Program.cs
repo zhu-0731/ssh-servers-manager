@@ -44,6 +44,17 @@ await Test("invalid ports, references, direction and duplicate IDs are rejected"
     c = Config(); c.Rules.Add(c.Rules[0] with { }); Throws(c.Validate);
     c = Config(); c.Rules[0].Direction = (ForwardDirection)8; Throws(c.Validate);
 }));
+await Test("automatic key lookup is optional, ordered, and excludes public and unrelated files", () => Sync(() =>
+{
+    Configuration.ValidateServer(server with { Auth = AuthKind.PrivateKey, PrivateKeyPath = "" });
+    var home = Path.Combine(root, "discovery"); var ssh = Path.Combine(home, ".ssh"); Directory.CreateDirectory(ssh);
+    foreach (var name in new[] { "id_rsa", "id_ed25519", "id_rsa.pub", "known_hosts", "config", "custom.ppk", "custom.pem" })
+        File.WriteAllText(Path.Combine(ssh, name), "fixture filename only");
+    var paths = PrivateKeyDiscovery.Find(home);
+    Assert(paths.Count == 4 && Path.GetFileName(paths[0]) == "id_ed25519");
+    Assert(paths.All(p => !p.EndsWith(".pub") && Path.GetFileName(p) != "config" && Path.GetFileName(p) != "known_hosts"));
+    Assert(PrivateKeyDiscovery.Find(Path.Combine(root, "no-home")).Count == 0);
+}));
 await Test("atomic persistence, backup and sanitized export/import", () => Sync(() =>
 {
     var c = Config(); var store = new ConfigStore(Path.Combine(root, "storage"));
@@ -191,6 +202,36 @@ if (args.Length >= 3 && args[0] == "--integration")
             manager.Start(actualServer, a); manager.Start(secondServer, b);
             await Running(a); await Running(b); await Echo(a.ListenPort); await Echo(b.ListenPort);
             await manager.StopAsync(a.Id); await Echo(b.ListenPort); await manager.StopAsync(b.Id);
+        });
+        await Test("real SSH automatically discovered encrypted key skips invalid candidates", async () =>
+        {
+            var home = Path.Combine(root, "automatic-encrypted"); Directory.CreateDirectory(Path.Combine(home, ".ssh"));
+            File.WriteAllText(Path.Combine(home, ".ssh", "id_ed25519"), "not a private key");
+            File.Copy(keyPath, Path.Combine(home, ".ssh", "id_rsa"));
+            var automatic = actualServer with { Id = Guid.NewGuid().ToString("N"), Auth = AuthKind.PrivateKey, PrivateKeyPath = "" };
+            credentials.Write(automatic.Id, "fixture-key-passphrase");
+            var autoManager = new TunnelManager(new SshTunnelFactory(credentials, trust, (_, _) => true, () => PrivateKeyDiscovery.Find(home)));
+            var rule = Rule(FreePort()) with { ServerId = automatic.Id, TargetPort = echoPort };
+            try
+            {
+                autoManager.Start(automatic, rule); await Wait(() => autoManager.Get(rule.Id).State is TunnelState.Running or TunnelState.Error);
+                Assert(autoManager.Get(rule.Id).State == TunnelState.Running, autoManager.Get(rule.Id).Detail); await Echo(rule.ListenPort);
+            }
+            finally { await autoManager.StopAllAsync(true); }
+        });
+        await Test("real SSH automatically discovered key connects without specifying a file or passphrase", async () =>
+        {
+            var home = Path.Combine(root, "automatic-plain"); Directory.CreateDirectory(Path.Combine(home, ".ssh"));
+            File.Copy(metadata.RootElement.GetProperty("autoKeyPath").GetString()!, Path.Combine(home, ".ssh", "id_ed25519"));
+            var automatic = actualServer with { Id = Guid.NewGuid().ToString("N"), Auth = AuthKind.PrivateKey, PrivateKeyPath = "" };
+            var autoManager = new TunnelManager(new SshTunnelFactory(credentials, trust, (_, _) => true, () => PrivateKeyDiscovery.Find(home)));
+            var rule = Rule(FreePort()) with { ServerId = automatic.Id, TargetPort = echoPort };
+            try
+            {
+                autoManager.Start(automatic, rule); await Wait(() => autoManager.Get(rule.Id).State is TunnelState.Running or TunnelState.Error);
+                Assert(autoManager.Get(rule.Id).State == TunnelState.Running, autoManager.Get(rule.Id).Detail); await Echo(rule.ListenPort);
+            }
+            finally { await autoManager.StopAllAsync(true); }
         });
         await Test("real SSH occupied local port and denied remote listener report errors", async () =>
         {

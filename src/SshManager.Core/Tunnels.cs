@@ -17,10 +17,11 @@ public interface ITunnelFactory
     ITunnelSession Create(Server server, ForwardRule rule, Action<string> warning, CancellationToken token);
 }
 
-public sealed class SshTunnelFactory(ICredentialStore credentials, HostTrustStore trust, Func<string, CancellationToken, bool> confirm) : ITunnelFactory
+public sealed class SshTunnelFactory(ICredentialStore credentials, HostTrustStore trust, Func<string, CancellationToken, bool> confirm,
+    Func<IReadOnlyList<string>>? discoverKeys = null) : ITunnelFactory
 {
     public ITunnelSession Create(Server server, ForwardRule rule, Action<string> warning, CancellationToken token) =>
-        new SshTunnelSession(server, rule, credentials, trust, confirm, warning, token);
+        new SshTunnelSession(server, rule, credentials, trust, confirm, warning, token, discoverKeys ?? (() => PrivateKeyDiscovery.Find()));
 }
 
 internal sealed class SshTunnelSession : ITunnelSession
@@ -34,14 +35,16 @@ internal sealed class SshTunnelSession : ITunnelSession
     private readonly CancellationToken lifetime;
     private SshClient? client;
     private ForwardedPort? port;
-    private PrivateKeyFile? key;
+    private readonly List<PrivateKeyFile> keys = [];
+    private readonly Func<IReadOnlyList<string>> discoverKeys;
     private volatile bool broken;
 
     public SshTunnelSession(Server server, ForwardRule rule, ICredentialStore credentials, HostTrustStore trust,
-        Func<string, CancellationToken, bool> confirm, Action<string> warning, CancellationToken lifetime)
+        Func<string, CancellationToken, bool> confirm, Action<string> warning, CancellationToken lifetime, Func<IReadOnlyList<string>> discoverKeys)
     {
         this.server = server; this.rule = rule; this.credentials = credentials; this.trust = trust;
         this.confirm = confirm; this.warning = warning; this.lifetime = lifetime;
+        this.discoverKeys = discoverKeys;
     }
 
     public bool IsAlive => !broken && client?.IsConnected == true && port?.IsStarted == true;
@@ -57,9 +60,26 @@ internal sealed class SshTunnelSession : ITunnelSession
         }
         else
         {
-            if (!File.Exists(server.PrivateKeyPath)) throw new InvalidDataException("私钥文件不存在，请重新选择。");
-            key = string.IsNullOrEmpty(secret) ? new PrivateKeyFile(server.PrivateKeyPath) : new PrivateKeyFile(server.PrivateKeyPath, secret);
-            auth = new PrivateKeyAuthenticationMethod(server.Username, key);
+            var automatic = string.IsNullOrWhiteSpace(server.PrivateKeyPath);
+            var paths = automatic ? discoverKeys() : new[] { PrivateKeyDiscovery.ExpandPath(server.PrivateKeyPath) };
+            if (paths.Count == 0) throw new InvalidDataException("常用路径中未找到私钥，请在服务器配置中选择文件；当前未接入 SSH Agent。");
+            var skipped = false;
+            foreach (var path in paths)
+            {
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    if (!File.Exists(path)) throw new InvalidDataException("私钥文件不存在，请重新选择或留空自动查找。");
+                    keys.Add(string.IsNullOrEmpty(secret) ? new PrivateKeyFile(path) : new PrivateKeyFile(path, secret));
+                }
+                catch (Exception ex) when (automatic && ex is SshException or IOException or CryptographicException or UnauthorizedAccessException)
+                {
+                    skipped = true;
+                }
+            }
+            if (keys.Count == 0) throw new InvalidDataException("找到的私钥无法读取或解密，请选择正确文件并填写私钥口令。");
+            if (skipped) warning("部分自动发现的私钥无法读取或解密，已跳过；如需使用请指定文件并填写口令。");
+            auth = new PrivateKeyAuthenticationMethod(server.Username, keys.ToArray());
         }
         var info = new ConnectionInfo(server.Host, server.Port, server.Username, auth)
         {
@@ -99,7 +119,7 @@ internal sealed class SshTunnelSession : ITunnelSession
     {
         // Disconnect first so remote cancel cannot wait indefinitely on an unresponsive peer.
         try { client?.Dispose(); }
-        finally { port?.Dispose(); key?.Dispose(); }
+        finally { port?.Dispose(); foreach (var key in keys) key.Dispose(); }
     }
 }
 

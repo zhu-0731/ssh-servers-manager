@@ -85,7 +85,6 @@ public sealed class Configuration
         Host(s.Host); Port(s.Port); Require(!string.IsNullOrWhiteSpace(s.Username), "用户名不能为空。");
         Require(Enum.IsDefined(s.Auth), "认证方式无效。");
         Require(s.TimeoutSeconds is >= 3 and <= 120, "连接超时必须为 3–120 秒。");
-        Require(s.Auth != AuthKind.PrivateKey || !string.IsNullOrWhiteSpace(s.PrivateKeyPath), "请选择私钥文件。");
     }
 
     public static void ValidateRule(ForwardRule r)

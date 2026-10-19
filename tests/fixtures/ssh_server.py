@@ -41,6 +41,8 @@ host_key = paramiko.RSAKey.generate(2048)
 user_key = paramiko.RSAKey.generate(2048)
 key_path = Path(sys.argv[1]).resolve()
 user_key.write_private_key_file(str(key_path), password="fixture-key-passphrase")
+auto_key_path = key_path.with_suffix(".auto")
+user_key.write_private_key_file(str(auto_key_path))
 
 
 class Server(paramiko.ServerInterface):
@@ -144,7 +146,7 @@ echo_socket = listener()
 threading.Thread(target=accept_loop, args=(ssh, handle_ssh), daemon=True).start()
 threading.Thread(target=accept_loop, args=(ssh_second, handle_ssh), daemon=True).start()
 threading.Thread(target=accept_loop, args=(echo_socket, echo), daemon=True).start()
-print(json.dumps({"sshPort": ssh.getsockname()[1], "sshPort2": ssh_second.getsockname()[1], "echoPort": echo_socket.getsockname()[1], "keyPath": str(key_path)}), flush=True)
+print(json.dumps({"sshPort": ssh.getsockname()[1], "sshPort2": ssh_second.getsockname()[1], "echoPort": echo_socket.getsockname()[1], "keyPath": str(key_path), "autoKeyPath": str(auto_key_path)}), flush=True)
 sys.stdin.readline()
 ssh.close()
 ssh_second.close()

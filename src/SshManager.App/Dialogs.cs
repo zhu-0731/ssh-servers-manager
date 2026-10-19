@@ -30,6 +30,11 @@ internal class EditorForm : Form
         Fields.Controls.Add(control, 1, row); return control;
     }
     protected TextBox Input(string label, string value = "") => Add(label, new TextBox { Text = value });
+    protected Label FieldLabel(Control control) => (Label)Fields.GetControlFromPosition(0, Fields.GetRow(control))!;
+    protected void SetFieldVisible(Control control, bool visible)
+    {
+        control.Visible = visible; FieldLabel(control).Visible = visible;
+    }
     protected NumericUpDown Number(string label, int value, int maximum = 65535, int minimum = 1) =>
         Add(label, new NumericUpDown { Minimum = minimum, Maximum = maximum, Value = value });
     protected ComboBox Choice(string label, object[] options, int index = 0)
@@ -61,33 +66,66 @@ internal sealed class ServerEditor : EditorForm
     private readonly NumericUpDown port, timeout;
     private readonly ComboBox auth;
     private readonly CheckBox clear;
+    private readonly Button browse;
+    private readonly Button discover;
+    private readonly Label authHint;
     public Server Result { get; private set; }
     public ServerEditor(Server server, ICredentialStore credentials) : base("SSH 服务器", 610)
     {
         original = server; Result = server; this.credentials = credentials;
         name = Input("名称", server.Name); host = Input("IP / 域名", server.Host); port = Number("SSH 端口", server.Port);
         username = Input("用户名", server.Username);
-        auth = Choice("认证方式", ["密码", "私钥"], (int)server.Auth);
-        key = Input("私钥文件路径", server.PrivateKeyPath);
-        var browse = Add("", new Button { Text = "选择私钥文件…", AutoSize = true });
+        auth = Choice("认证方式", ["用户名和密码（无需私钥）", "私钥文件"], (int)server.Auth);
+        key = Input("私钥文件（可选）", server.PrivateKeyPath);
+        key.PlaceholderText = "留空自动查找 ~/.ssh 下的常用密钥";
+        browse = Add("", new Button { Text = "选择私钥文件…", AutoSize = true });
         browse.Click += (_, _) => { using var file = new OpenFileDialog(); if (file.ShowDialog(this) == DialogResult.OK) key.Text = file.FileName; };
-        secret = Input("密码 / 私钥口令"); secret.UseSystemPasswordChar = true;
-        Add("", new Label { Text = "留空保留原凭据；凭据写入 Windows 凭据管理器。", AutoSize = true });
+        discover = Add("", new Button { Text = "查找本机常用私钥…", AutoSize = true });
+        discover.Click += async (_, _) =>
+        {
+            try
+            {
+                var paths = PrivateKeyDiscovery.Find();
+                using var menu = new ContextMenuStrip();
+                menu.Items.Add("自动查找（留空，连接时依次尝试）", null, (_, _) => key.Clear());
+                foreach (var path in paths) menu.Items.Add(path, null, (_, _) => key.Text = path);
+                if (paths.Count == 0) { MessageBox.Show(this, "未找到常用私钥。已检查用户目录和 HOME 的 .ssh 中的 id_ed25519、id_ecdsa、id_rsa 及 .pem/.key/.ppk 文件。可手动选择其他位置。", "查找结果"); return; }
+                var chosen = new TaskCompletionSource();
+                menu.Closed += (_, _) => chosen.TrySetResult();
+                menu.Show(discover, new Point(0, discover.Height));
+                await chosen.Task;
+            }
+            catch (Exception ex) { MessageBox.Show(this, ex.Message, "查找失败"); }
+        };
+        secret = Input("SSH 登录密码"); secret.UseSystemPasswordChar = true;
+        authHint = Add("", new Label { AutoSize = true, MaximumSize = new Size(340, 0) });
         clear = Add("", new CheckBox { Text = "清除已保存凭据（用于无口令私钥）", AutoSize = true });
         timeout = Number("连接超时（秒）", server.TimeoutSeconds, 120, 3);
-        auth.SelectedIndexChanged += (_, _) => key.Enabled = auth.SelectedIndex == 1;
-        key.Enabled = auth.SelectedIndex == 1;
+        auth.SelectedIndexChanged += (_, _) => { secret.Clear(); clear.Checked = false; UpdateAuthentication(); };
+        UpdateAuthentication();
+    }
+    private void UpdateAuthentication()
+    {
+        var isKey = auth.SelectedIndex == (int)AuthKind.PrivateKey;
+        Fields.SuspendLayout();
+        SetFieldVisible(key, isKey); SetFieldVisible(browse, isKey); SetFieldVisible(discover, isKey); SetFieldVisible(clear, isKey);
+        key.Enabled = browse.Enabled = isKey;
+        FieldLabel(secret).Text = isKey ? "私钥口令（可选）" : "SSH 登录密码";
+        authHint.Text = isKey
+            ? "私钥路径留空会自动查找常用密钥并依次尝试。无口令私钥无需填写口令；SSH Agent 暂未接入。"
+            : "使用 SSH 用户名和密码连接，无需私钥文件。已保存密码留空可保留。";
+        Fields.ResumeLayout(true);
     }
     protected override void Save()
     {
         var result = original with
         {
             Name = name.Text.Trim(), Host = host.Text.Trim(), Port = (int)port.Value, Username = username.Text.Trim(),
-            Auth = (AuthKind)auth.SelectedIndex, PrivateKeyPath = key.Text.Trim(), TimeoutSeconds = (int)timeout.Value
+            Auth = (AuthKind)auth.SelectedIndex, PrivateKeyPath = auth.SelectedIndex == (int)AuthKind.PrivateKey ? key.Text.Trim() : "", TimeoutSeconds = (int)timeout.Value
         };
         Configuration.ValidateServer(result);
         if (clear.Checked && secret.Text.Length > 0) throw new InvalidDataException("清除凭据与输入新凭据不能同时使用。");
-        if (result.Auth == AuthKind.PrivateKey && !File.Exists(result.PrivateKeyPath)) throw new InvalidDataException("私钥文件不存在。");
+        if (result.Auth == AuthKind.PrivateKey && !string.IsNullOrWhiteSpace(result.PrivateKeyPath) && !File.Exists(PrivateKeyDiscovery.ExpandPath(result.PrivateKeyPath))) throw new InvalidDataException("私钥文件不存在，可留空自动查找。");
         if (secret.Text.Length > 0) credentials.Write(result.Id, secret.Text);
         else if (clear.Checked || result.Auth != original.Auth) credentials.Delete(result.Id);
         Result = result;

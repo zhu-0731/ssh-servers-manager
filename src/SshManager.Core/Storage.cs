@@ -52,7 +52,7 @@ public sealed class ConfigStore(string directory)
     {
         var portable = new Configuration
         {
-            Servers = config.Servers.Select(s => s with { PrivateKeyPath = s.Auth == AuthKind.PrivateKey ? "<导入后重新选择私钥>" : "" }).ToList(),
+            Servers = config.Servers.Select(s => s with { PrivateKeyPath = "" }).ToList(),
             Profiles = config.Profiles.Select(p => p with { }).ToList(),
             Rules = config.Rules.Select(r => r with { }).ToList()
         };
